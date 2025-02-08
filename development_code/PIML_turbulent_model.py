@@ -82,24 +82,18 @@ def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch
     class Net(nn.Module):
         def __init__(self, input_dim):
             super().__init__()
-            self.fc1 = nn.Linear(input_dim, 64*3)
-            self.fc2 = nn.Linear(64*3, 32*3)
-            self.fc3 = nn.Linear(32*3, 32*2)
-            self.fc4 = nn.Linear(32*2, 16*2)
-            self.fc5 = nn.Linear(16*2,16)
-            self.fc6 = nn.Linear(16,8)
-            self.fc7 = nn.Linear(8,2)
-
+            self.fc1 = nn.Linear(input_dim, 64)  # First hidden layer
+            self.fc2 = nn.Linear(64, 64)         # Second hidden layer
+            self.fc3 = nn.Linear(64, 64)         # Third hidden layer
+            self.fc4 = nn.Linear(64, 64)         # Fourth hidden layer
+            self.fc5 = nn.Linear(64, 2)          # Output layer
             
         def forward(self, x):
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x))
-            x = F.relu(self.fc3(x))
-            x = F.relu(self.fc4(x)) # Activation function ReLu: Applies the rectified linear unit function
-            x = t.tanh(self.fc5(x)) # Activation function ReLu: Applies the rectified linear unit function
-            x = F.relu(self.fc6(x)) # Activation function ReLu: Applies the rectified linear unit function
-            x = self.fc7(x) # Activation function TanH: Applies the Hyperbolic Tangent function
-            
+            x = F.relu(self.fc1(x))  # Activation for first hidden layer
+            x = F.relu(self.fc2(x))  # Activation for second hidden layer
+            x = F.relu(self.fc3(x))  # Activation for third hidden layer
+            x = F.relu(self.fc4(x))  # Activation for fourth hidden layer
+            x = t.tanh(self.fc5(x))  # Output layer with tanh activation
             return x
     
     train_losses = []               # Store loss output
