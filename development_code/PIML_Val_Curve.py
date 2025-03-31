@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sat Mar 29 21:31:05 2025
+
+@author: walte
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Sat Feb  8 18:28:17 2025
 
 @author: walter
@@ -19,7 +26,7 @@ from pathlib import Path
 #%% Loading Data
 # Load Training Data
 script_path = os.path.abspath(__file__)
-parent_dir = os.path.dirname(script_path)
+parent_dir = r'C:\\Users\\walte\\Documents\\GTECH_Aero\\Spring_2025\\Aero_Research_Spring25' #os.path.dirname(script_path)
 #%%
 def load_data(caseName=[], ReNum=''):       # Function to load dataset in pandas
     wd = fr'{parent_dir}\turb_modeling_ref\\turbulence-modeling-PIML-master\\database\\pehill'      # Directory where data exist
@@ -70,19 +77,13 @@ class Net(nn.Module):
     def __init__(self, input_dim):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, 64)  # First hidden layer
-        self.fc2 = nn.Linear(64, 64)         # Second hidden layer
-        self.fc3 = nn.Linear(64, 64)         # Third hidden layer
-        self.fc4 = nn.Linear(64, 64)         # Fourth hidden layer
-        self.fc5 = nn.Linear(64, 32)         # Fifth hidden layer
-        self.fc6 = nn.Linear(32, 2)          # Output layer
+        self.fc2 = nn.Linear(64, 32)         # Second hidden layer
+        self.fc3 = nn.Linear(32, 2)          # Output layer
         
     def forward(self, x):
         x = F.relu(self.fc1(x))  # Activation for first hidden layer
         x = F.relu(self.fc2(x))  # Activation for second hidden layer
-        x = F.relu(self.fc3(x))  # Activation for third hidden layer
-        x = F.relu(self.fc4(x))  # Activation for fourth hidden layer
-        x = F.relu(self.fc5(x))  # Activation for fifth hidden layer
-        x = t.tanh(self.fc6(x))  # Output layer with tanh activation
+        x = t.tanh(self.fc3(x))  # Output layer with tanh activation
         return x
 
 train_losses = []               # Store loss output
@@ -90,7 +91,7 @@ val_losses=[]
 
 net = Net(input_dim=trainFeatures.shape[1])     # NN Variable function
 criterion = nn.MSELoss(reduction='mean')         # Sum the square error instead of avg them
-optimizer = optim.Adam(net.parameters(), lr=0.001)
+optimizer = optim.Adam(net.parameters(), lr=0.004)
 
 best_loss = float('inf')
 early_stop_count = 0
