@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Thu Jan 30 22:19:08 2025
+
+@author: walte
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Mon Jan 13 18:05:57 2025
 
 @author: walte
@@ -47,7 +54,7 @@ df_test_responses, df_test_features = load_data(caseName=['deltaField', 'marker'
 
 #%% NN Model
 
-def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch_size=200, epochs=500):
+def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], new_data= [], batch_size=200, epochs=500, pred=False, model=[]):
     t.manual_seed(42)
     trainFeatures = t.tensor(data[0].values, dtype=t.float32)   # Load train features as tensor object
     trainResponses = t.tensor(data[1].values, dtype=t.float32)  # Load train responses as tensor object
@@ -71,26 +78,38 @@ def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch
         leading to incorrect updates. Unintentional larger updates and Incorrect 
         weight updates, causing training instability
     ''' 
+    if pred == True:
+        # Here we use predict
+        net = model[0]
+        net.eval()  
+        with t.no_grad(): 
+            if len(new_data)>0:
+                new_df = t.tensor(new_data[0].values, dtype=t.float32)
+                testResponsesPred = net(new_df)     
+                return testResponsesPred.numpy()
 
+            else:
+                testResponsesPred = net(testFeatures)        
+                return testResponsesPred.numpy()
+        
     class Net(nn.Module):
         def __init__(self, input_dim):
             super().__init__()
-            self.fc1 = nn.Linear(input_dim, 64)
-            self.fc2 = nn.Linear(64, 32)
-            self.fc3 = nn.Linear(32,2)
+            self.fc1 = nn.Linear(input_dim, 64)  # First hidden layer
+            self.fc2 = nn.Linear(64, 32)         # Second hidden layer
+            self.fc3 = nn.Linear(32, 2)          # Output layer
             
         def forward(self, x):
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x)) # Activation function ReLu: Applies the rectified linear unit function
-            x = t.tanh(self.fc3(x)) # Activation function TanH: Applies the Hyperbolic Tangent function
-            
+            x = F.relu(self.fc1(x))  # Activation for first hidden layer
+            x = F.relu(self.fc2(x))  # Activation for second hidden layer
+            x = t.tanh(self.fc3(x))  # Output layer with tanh activation
             return x
     
     train_losses = []               # Store loss output
     
     net = Net(input_dim=trainFeatures.shape[1])     # NN Variable function
     criterion = nn.MSELoss(reduction='mean')         # Sum the square error instead of avg them
-    optimizer = optim.Adam(net.parameters(), lr=0.002)
+    optimizer = optim.Adam(net.parameters(), lr=0.004)
 
     best_loss = float('inf')
     early_stop_count = 0
@@ -104,9 +123,10 @@ def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch
             loss = criterion(output, batch_responses)
             loss.backward()
             optimizer.step()        # Adjusts the models parameters based on the optimizers rule (adam)
-            train_losses.append(loss.item())
             epoch_loss += loss.item()
             print(loss)
+        train_losses.append(loss.item())
+
             
         if epoch_loss < best_loss:
             best_loss = epoch_loss
@@ -114,7 +134,7 @@ def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch
         else:
             early_stop_count += 1
 
-        if early_stop_count >= 10:
+        if early_stop_count >= 50:
             print(f"Early stopping at epoch {epoch+1}")
             break
     
@@ -126,12 +146,9 @@ def Torch_NN(data=[df_train_features,df_train_responses,df_test_features], batch
     plt.legend()
     plt.grid()
     
-   # Here we use predict
-    net.eval()  
-    with t.no_grad(): 
-        testResponsesPred = net(testFeatures)
-            
-    return testResponsesPred.numpy()
+    return net
+
+    
 
 
 #%%
@@ -214,17 +231,12 @@ def compareResults(dataFolderRANS, testResponses, testResponsesPred_RF, testResp
 
 
 #%%
-testResponsesPred = Torch_NN(batch_size=200, epochs=1000)
+net = Torch_NN(batch_size=200, epochs=500)
+
+testResponsesPred = Torch_NN(batch_size=200, pred=True, epochs=100, model=[net])
+
 
 dataFolderRANS = r'C:\Users\walte\Documents\GTECH_Aero\Spring_2025\Aero_Research_Spring25\turb_modeling_ref\turbulence-modeling-PIML-master\database\pehill\XiEta-RANS\Re10595\\'
 symbol = 'g+'
 iterateLines(dataFolderRANS, df_test_responses.values, testResponsesPred, name='NN', symbol='m+')
 plt.show()
-
-
-
-
-
-
-
-
