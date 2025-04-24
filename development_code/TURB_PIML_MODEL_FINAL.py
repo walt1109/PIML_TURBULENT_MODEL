@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Apr  6 17:46:37 2025
+Created on Thu Apr 17 20:57:33 2025
 
-@author: walte
+@author: walter
 """
-
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Dataset
 
 from sklearn.metrics import r2_score
 from sklearn.metrics import mean_absolute_error
@@ -25,166 +24,220 @@ import os
 script_path = os.path.abspath(__file__)
 parent_dir = os.path.dirname(script_path)
 #%%
-def load_data(caseName=[], ReNum=''):       # Function to load dataset in pandas
-    wd = fr'{parent_dir}\..\turb_modeling_ref\\turbulence-modeling-PIML-master\\database\\pehill'      # Directory where data exist
-    d = []
-    for case in caseName:       # Loop through case names
-        if case == 'marker':    # Making sure files are read correctly
-            header = pd.read_csv(f'{wd}/{case}/{ReNum}/{case+"file"}', header=None).head(1)     # Since it will be a dataframe, fix column name
-        else:
-            header = pd.read_csv(f'{wd}/{case}/{ReNum}/{case}', header=None).head(1)            # If not, it will be loaded as a df array
-        header = header[0].str.replace(r'\s+', ' ', regex=True)     # Remove whitespace
-        header = header[0].replace('#', '')                         # Remove #
-        header = [s for s in header.split(' ') if s]                # Split into columns names
+# def load_data(caseName=[], ReNum=''):       # Function to load dataset in pandas
+#     wd = fr'{parent_dir}\..\..\turb_modeling_ref\\turbulence-modeling-PIML-master\\database\\pehill'      # Directory where data exist
+#     d = []
+#     for case in caseName:       # Loop through case names
+#         if case == 'marker':    # Making sure files are read correctly
+#             header = pd.read_csv(f'{wd}/{case}/{ReNum}/{case+"file"}', header=None).head(1)     # Since it will be a dataframe, fix column name
+#         else:
+#             header = pd.read_csv(f'{wd}/{case}/{ReNum}/{case}', header=None).head(1)            # If not, it will be loaded as a df array
+#         header = header[0].str.replace(r'\s+', ' ', regex=True)     # Remove whitespace
+#         header = header[0].replace('#', '')                         # Remove #
+#         header = [s for s in header.split(' ') if s]                # Split into columns names
         
-        if case == 'marker':
-            df = pd.read_csv(f'{wd}/{case}/{ReNum}/{case+"file"}', sep=' ', header=None, skiprows=1, names=header)
-        else:
-            df = pd.read_csv(f'{wd}/{case}/{ReNum}/{case}', sep=' ', header=None)
-        d = d +[df]
-    return d[0], d[1]
+#         if case == 'marker':
+#             df = pd.read_csv(f'{wd}/{case}/{ReNum}/{case+"file"}', sep=' ', header=None, skiprows=1, names=header)
+#         else:
+#             df = pd.read_csv(f'{wd}/{case}/{ReNum}/{case}', sep=' ', header=None)
+#         d = d +[df]
+#     return d[0], d[1]
 
 
-df_train_responses, df_train_features = load_data(caseName=['deltaField', 'marker'], ReNum='Re5600')
-df_test_responses, df_test_features = load_data(caseName=['deltaField', 'marker'], ReNum='Re10595')
+# df_train_responses, df_train_features = load_data(caseName=['deltaField', 'marker'], ReNum='Re5600')
+# df_test_responses, df_test_features = load_data(caseName=['deltaField', 'marker'], ReNum='Re10595')
 
-cols = df_train_features.columns[:5]
-df_train_features = df_train_features[cols]
-df_test_features = df_test_features[cols]
+# Saving to CSV 
+# df_train_features[['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS']] = df_train_responses
+# df_train_features.to_csv(f'{parent_dir}/Re5600_DNS_Training_set.csv')
+# df_test_features[['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS']] = df_test_responses
+# df_test_features.to_csv(f'{parent_dir}/Re10595_DNS_Test_set.csv')
 
+
+df_train_features = pd.read_csv(f'{parent_dir}/Re5600_DNS_Training_set.csv')
+df_test_features = pd.read_csv(f'{parent_dir}/Re10595_DNS_Test_set.csv')
+
+
+# cols = df_train_features.columns[:5]
+# df_train_features = df_train_features[cols]
+# df_test_features = df_test_features[cols]
+
+# df_train_responses[['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS']] = df_train_responses
+# df_train_responses = df_train_responses.drop(columns=[0,1], axis=1)
+
+# df_test_responses[['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS']] = df_test_responses
+# df_test_responses = df_test_responses.drop(columns=[0,1], axis=1)
 
 print(f'df_train_features DataFrame shape: {df_train_features.shape}')
 print(f'df_test_features DataFrame shape: {df_test_features.shape}')
 
-#%% NN Metrics
-def predict(model, data_loader, train=True):
-    target_list = []
-    pred_list = []
 
-    if train == True:
+#%% Useful Functions
 
-        model.eval()  
-        with t.no_grad():
-            for i, data_output in enumerate(data_loader):
-                X, y_act = data_output
-                y_act = y_act.flatten().tolist()
-                y_pred = model.forward(X).flatten().tolist()
+def norm_funct(df, cols=['QC', 'TI', 'Re_d', 'PGrad', 'TurbTime']):
+    '''
+    Normalize data using z-score method. Centers mean at 0 and standard deviation at 1.
+    Keeps the distribution of the data the same as the original
     
-                targets = y_act
-                predictions = y_pred
-                target_list.extend(targets)
-                pred_list.extend(predictions)
-        model.train()
-        return target_list, pred_list
+    Parameters
+    ----------
+    df : Your data as Pandas Dataframe.
+    cols : Columns you want to normalize (Train inputs or Target features).
+
+    Returns
+    -------
+    df with normalized columns added
+    '''
+    for c in cols:
+        mean = df[c].mean()
+        std = df[c].std()
+        df[f'{c}_NORM'] = (df[c] - mean)/std
+    return df
+
+def unst_func(arr):
+    '''
+    Parameters
+    ----------
+    arr : Output array normalized
+        Input the output array if you normalized it.
+
+    Returns
+    -------
+    unst_arr : Will return the ourput array unnormalized
+
+    '''
+    if arr.shape[1] == 2:
+        unst_arr = np.zeros((arr.shape[0],2))
+        mean1 = arr[:,0].mean()
+        std1 = arr[:,0].std()
+        x1 = (arr[:,0] * std1) + mean1
+    
+        mean2 = arr[:,1].mean()
+        std2 = arr[:,1].std()
+        x2 = (arr[:,1] * std2) + mean2
+        
+        unst_arr[:,0] = x1
+        unst_arr[:,1] = x2
+        
+        return unst_arr
+    
     else:
-        model.eval()  
-        with t.no_grad():
-            for i, data_output in enumerate(data_loader):
-                X, y_act = data_output
-                y_pred = model.forward(X)
-    
-                targets = y_act
-                predictions = y_pred
-                target_list.extend(targets.numpy())
-                pred_list.extend(predictions.numpy())
-        model.train()
-        return np.stack(target_list), np.stack(pred_list)
+        unst_arr = np.zeros((arr.shape[0]))
+        mean = arr.mean()
+        std = arr.std()
+        x = (arr * std) + mean
+        unst_arr = x
+        
+        return unst_arr
 
+class MyDataset(Dataset):
+    '''
+    Transform Training set into tensor format to read it into the PyTorch Neural Network
+    '''
+    def __init__(self, X, y):
+        self.features = t.tensor(X, dtype=t.float32)
+        self.targets = t.tensor(y, dtype=t.float32)
 
-def evaluate(target, pred):
-    r2 = r2_score(target, pred)
-    mae = mean_absolute_error(target, pred)
-    rmse = mean_squared_error(target, pred)
-    output = (r2, mae, rmse)
-    return output
+    def __getitem__(self, index):
+        x = self.features[index]
+        y = self.targets[index]
+        return x, y
 
+    def __len__(self):
+        return self.targets.shape[0]
+#%% Neural Network
+'''
+Feed-Forward or Multi-Layer Perceptron Neural Network
 
-def print_scores(scores, label=''):
-    r2, mae, rmse = scores
-    print(f'{label} r2: {r2:0.4f}')
-    print(f'{label} mae: {mae:0.4f}')
-    print(f'{label} rmse: {rmse:0.4f}')
-    return scores
+input_dim: Dimension of your training data.
 
-
-def plot_pred_act(act, pred, model, reg_line=True, label=''):
-    xy_max = np.max([np.max(act), np.max(pred)])
-
-    plot = plt.figure(figsize=(6,6))
-    plt.plot(act, pred, 'o', ms=9, mec='k', mfc='silver', alpha=0.4)
-    plt.plot([0, xy_max], [0, xy_max], 'k--', label='ideal')
-    if reg_line:
-        polyfit = np.polyfit(act, pred, deg=1)
-        reg_ys = np.poly1d(polyfit)(np.unique(act))
-        plt.plot(np.unique(act), reg_ys, alpha=0.8, label='linear fit')
-    plt.axis('scaled')
-    plt.xlabel(f'Actual {label}')
-    plt.ylabel(f'Predicted {label}')
-    plt.title(f'{type(model).__name__}, r2: {r2_score(act, pred):0.4f}')
-    plt.legend(loc='upper left')
-    
-    return plot
-
-#%% NN Training Data
-# Set a random seed to ensure reproducibility across runs
-RNG_SEED = 42
-np.random.seed(RNG_SEED)
-t.manual_seed(RNG_SEED)
-
-data=[df_train_features,df_train_responses,df_test_features]
-batch_size=200
-
-t.manual_seed(42)
-trainFeatures = t.tensor(data[0].values, dtype=t.float32)   # Load train features as tensor object
-trainResponses = t.tensor(data[1].values, dtype=t.float32)  # Load train responses as tensor object
-testFeatures = t.tensor(data[2].values, dtype=t.float32)    # Load test features as tensor object
-
-train_dataset = TensorDataset(trainFeatures, trainResponses) # Takes multiple matrix as inputs (input features, labels)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True) # Creates random batches of your dataset
-
-#%% NN Model
-
+Sequencial because it will move forward adjusting weights with linear calculations
+Leaky-Relu helps learn non-linear data and assist in vanishing gradients used to adjust weights
+'''
 class Net(nn.Module):
     def __init__(self, input_dim):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, 64)  # First hidden layer
-        self.fc2 = nn.Linear(64, 32)         # Second hidden layer
-        self.fc3 = nn.Linear(32, 2)          # Output layer
+        super(Net, self).__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_dim, 64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 32),
+            nn.LeakyReLU(),
+            nn.Linear(32, 2),
+            # nn.Tanh()
+        )
         
     def forward(self, x):
-        x = F.relu(self.fc1(x))  # Activation for first hidden layer
-        x = F.relu(self.fc2(x))  # Activation for second hidden layer
-        x = t.tanh(self.fc3(x))  # Output layer with tanh activation
-        return x
+        return self.layers(x)
 
-model = Net(input_dim=trainFeatures.shape[1])
+#%% Creating Training Set
 
-# Loss/Optimizer
-criterion = nn.MSELoss(reduction='mean')         
-print('Loss criterion: ')
-print(criterion)
+cols = ['QC', 'TI', 'Re_d', 'PGrad', 'TurbTime'] # Training with these 5 columns
+targ_cols = ['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS'] # Our target column
 
-# Initialize the optimzer
-optim_lr = 0.01
-optimizer = optim.Adam(model.parameters(), lr=optim_lr)
-print('\nOptimizer: ')
-print(optimizer)
+X_train = df_train_features[cols].values
+y_train = df_train_features[targ_cols].values
+train_ds = MyDataset(X_train, y_train)
 
-#%% Training
-data_type = t.float
-epochs = 1000
+train_loader = DataLoader(dataset=train_ds, batch_size=200, shuffle=True)
 
-for epoch in range(epochs):       
-    for i, data_output in enumerate(train_loader):
-        X, y = data_output
+#%%
+
+t.manual_seed(1)
+model = Net(input_dim=X_train.shape[1])
+
+optimizer = t.optim.Adam(model.parameters(), lr=0.01)
+
+num_epochs = 1000
+percentage = 0.65
+loss_list = []
+train_acc_list, val_acc_list = [], []
+for epoch in range(num_epochs):
+
+    model = model.train()
+    for batch_idx, (features, targets) in enumerate(train_loader):
+
+        logits = model(features)
+        loss = F.smooth_l1_loss(logits, targets)*percentage + F.mse_loss(logits, targets)*(1-percentage)
         
         optimizer.zero_grad()
-        output = model.forward(X).flatten()
-        loss = criterion(output.view(-1), y.view(-1))
         loss.backward()
         optimizer.step()
 
-#%% Plot DNS vs Predicted Reynolds Stresses
+        if not batch_idx % 250:
+            ### LOGGING
+            print(
+                f"Epoch: {epoch+1:03d}/{num_epochs:03d}"
+                f" | Batch {batch_idx:03d}/{len(train_loader):03d}"
+                f" | Train Loss: {loss:.4f} | R2 Score: {r2_score(targets.detach().numpy().flatten(), logits.detach().numpy().flatten())}"
+            )
+        loss_list.append(loss.item())
+
+#%%
+X_input = df_test_features[cols]
+target_data = df_test_features[['SQUARED_DUCT_RSTRESS','PERIODIC_HILL_RSTRESS']].values
+
+input_tensor = t.tensor(X_input.values, dtype=t.float32)
+
+model.eval()
+# predict
+y_mlp_tensor = model(input_tensor)
+y_mlp = y_mlp_tensor.detach().numpy().astype(np.float64)
+
+fig, ax = plt.subplots(1,2, figsize=(14,8))
+for i, n in zip(range(2),['Square Duct Reynold Stress', 'Periodic Hill Reynold Stress']):
+    ax[i].scatter(target_data[:,i], y_mlp[:,i], c='grey', alpha=0.4)
+    xy_max = np.max([np.max(target_data[:,i]), np.max(y_mlp[:,i])])
+    ax[i].plot([0, xy_max], [0, xy_max], 'k--', label='ideal')
+    polyfit = np.polyfit(target_data[:,i], y_mlp[:,i], deg=1)
+    reg_ys = np.poly1d(polyfit)(np.unique(target_data[:,i]))
+    ax[i].plot(np.unique(target_data[:,i]), reg_ys, alpha=0.8, color='r', label='linear fit')
+    ax[i].set_xlabel("Predicted")
+    ax[i].set_ylabel("Target")
+    ax[i].set_title(f'{n} - R2_Score: {round(r2_score(target_data[:,i], y_mlp[:,i]), 3)}')
+plt.tight_layout()
+plt.legend()
+
+#%% Turb Plots
 
 def plotXiEta(XiEta_RANS, testResponses, testResponsesPred, name, symbol='r^'):
     # Reconstruct Barycentric coordinates
@@ -246,6 +299,7 @@ def iterateLines(dataFolderRANS, testResponses, testResponsesPred, name, symbol=
         endIndex = indexList[iterN]
         plotXiEta(XiEta, testResponses[startIndex:endIndex,:], 
                          testResponsesPred[startIndex:endIndex,:], name, symbol)
+    #plt.show()
 
 
 def compareResults(dataFolderRANS, testResponses, testResponsesPred_RF, testResponsesPred_NN):
@@ -260,19 +314,10 @@ def compareResults(dataFolderRANS, testResponses, testResponsesPred_RF, testResp
         comparePlotRFNN(XiEta, testResponses[startIndex:endIndex,:], 
                     testResponsesPred_RF[startIndex:endIndex,:], 
                     testResponsesPred_NN[startIndex:endIndex,:])
-
-#%% Testing on Test data
-testResponses = t.tensor(df_test_responses.values, dtype=t.float32)
-test_dataset = TensorDataset(testFeatures, testResponses)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-target_test, pred_test = predict(model, test_loader, train=False)
-test_scores = evaluate(target_test, pred_test)
-print_scores(test_scores, label='test')
-
-plot = plot_pred_act(target_test[:,0], pred_test[:,0], model, label='Reynolds Stess')
-plot = plot_pred_act(target_test[:,1], pred_test[:,1], model, label='Reynolds Stess')
-
+ 
+        
+#%% Reynolds Triangle
 dataFolderRANS = r'C:\Users\walte\Documents\GTECH_Aero\Spring_2025\Aero_Research_Spring25\turb_modeling_ref\turbulence-modeling-PIML-master\database\pehill\XiEta-RANS\Re10595\\'
 symbol = 'g+'
-iterateLines(dataFolderRANS, df_test_responses.values, pred_test, name='NN', symbol='m+')
+iterateLines(dataFolderRANS, target_data, y_mlp, name='NN', symbol='m+')
+
